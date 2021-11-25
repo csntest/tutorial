@@ -1,25 +1,21 @@
-type Transaction @entity {
-
-  id: ID! # Transaction hash
-
-  value: BigInt!
-
-  to: String!
-
-  from: String!
-
-  contractAddress: String!
+type Pool @entity {
+  id: ID! # Pool's pid
+  totalAmount: BigInt!
+  totalUsers: BigInt!
+  averageAmountCommited: BigInt!
+  maxAmountCommited: BigInt!
+  minAmountCommited: BigInt!
 }
 
+type Participation @entity {
+  id: ID! # Usser's address - pool's id
+  pid: Int!
+  amount: BigInt!
+}
 
-type Approval @entity {
-  id: ID! # Transaction hash
-
-  value: BigInt!
-
-  owner: String!
-
-  spender: String!
-
-  contractAddress: String!
+type User @entity {
+  id: ID! # User's address
+  totalAmount: BigInt!
+  vaultsAmount: BigInt!
+  participations: [Participation!]
 }

@@ -7,7 +7,8 @@
     "build": "tsc -b",
     "prepack": "rm -rf dist && npm build",
     "test": "jest",
-    "codegen": "./node_modules/.bin/subql codegen"
+    "codegen": "./node_modules/.bin/subql codegen",
+    "docker": "docker-compose pull && docker-compose up"
   },
   "homepage": "https://github.com/subquery/tutorials-moonriver-evm-starter",
   "repository": "github:subquery/tutorials-moonriver-evm-starter",
