@@ -8,8 +8,9 @@ type Pool @entity {
 }
 
 type Participation @entity {
-  id: ID! # Usser's address - pool's id
+  id: ID! # Usser's address - pool's pid
   pid: Int!
+  user: User!
   amount: BigInt!
 }
 
@@ -17,5 +18,5 @@ type User @entity {
   id: ID! # User's address
   totalAmount: BigInt!
   vaultsAmount: BigInt!
-  participations: [Participation!]
+  participations: [Participation!]! @derivedFrom(field: "user")
 }

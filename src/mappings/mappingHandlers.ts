@@ -1,4 +1,5 @@
 import {Pool, Participation, User} from "../types";
+// import {Pool} from "../types";
 import {MoonbeamEvent} from '@subql/contract-processors/dist/moonbeam';
 import {BigNumber} from "ethers";
 
@@ -13,22 +14,24 @@ function createPool(pid: BigNumber, amount: BigNumber): Pool {
     pool.averageAmountCommited = BigInt(0);
     pool.maxAmountCommited = BigInt(0);
     pool.minAmountCommited = BigInt(0);
+
     return pool;
 }
 
-function createPartitipation(address: string, pid: BigNumber, amount: BigNumber): Participation {
-    let participation = new Participation(address + '-' + pid)
+async function createPartitipation(participationId: string, address: string, pid: BigNumber, amount: BigNumber): Promise<void> {
+    let participation = new Participation(participationId)
     participation.pid = pid.toNumber();
     participation.amount = amount.toBigInt();
-    return participation;
+    participation.userId = address;
+
+    return await participation.save();
 }
 
-function createUser(address: string, amount: BigNumber, participationId: string): User {
+async function createUser(address: string, amount: BigNumber): Promise<void> {
     let user = new User(address);
     user.totalAmount = amount.toBigInt();
-    user.participationsId = [];
-    user.participationsId.push(participationId);
-    return user;
+
+    return await user.save();
 }
 
 function updatePool(pool: Pool, amount: BigNumber): Pool {
@@ -46,6 +49,7 @@ export async function handleDepositEvent(event: MoonbeamEvent<DepositEventArgs>)
     const address = event.args.user;
     const pid = event.args.pid
     const amount = event.args.amount
+    const participationId = address.concat('-').concat(pid.toString())
 
     let pool = await Pool.get(pid.toString());
     if (!pool) {
@@ -54,25 +58,28 @@ export async function handleDepositEvent(event: MoonbeamEvent<DepositEventArgs>)
         pool.totalAmount = pool.totalAmount + amount.toBigInt();
     }
 
-    let user = await User.get(address);
-    let participation;
+    const user = await User.get(address);
     if (!user) {
-        participation = createPartitipation(address, pid, amount);
-        user = createUser(address, amount, participation.id);
+
+        await createUser(address, amount);
+        await createPartitipation(participationId, address, pid, amount);
         pool.totalUsers = pool.totalUsers + BigInt(1);
+
     } else {
+
         user.totalAmount = user.totalAmount + amount.toBigInt();
-        participation = Participation.get(address + '-' + pid);
+        await user.save();
+
+        const participation = await Participation.get(participationId);
         if (!participation) {
-            participation = createPartitipation(address, pid, amount);
-            user.participationsId.push(participation.id)
+            await createPartitipation(participationId, address, pid, amount);
         } else {
-            participation.amount = participation.amount + amount;
+            participation.amount = participation.amount + amount.toBigInt();
+            await participation.save();
         }
+
     }
 
-    await participation.save();
-    await user.save();
 
     pool.totalAmount = pool.totalAmount + amount.toBigInt();
     pool = updatePool(pool, amount);
@@ -85,22 +92,19 @@ export async function handleWithdrawEvent(event: MoonbeamEvent<WithdrawEventArgs
     const pid = event.args.pid
     const amount = event.args.amount
 
-    let pool = await Pool.get(pid.toString());
-    pool.totalAmount = pool.totalAmount - amount.toBigInt();
-
     let user = await User.get(address);
     user.totalAmount = user.totalAmount - amount.toBigInt();
+    await user.save()
 
     let participation = await Participation.get(address + '-' + pid);
     participation.amount = participation.amount - amount.toBigInt();
+    await participation.save();
 
+    let pool = await Pool.get(pid.toString());
+    pool.totalAmount = pool.totalAmount - amount.toBigInt();
     if (!participation.amount) {
         pool.totalUsers = pool.totalUsers - BigInt(1);
     }
-
     pool = updatePool(pool, amount);
-
-    await participation.save();
-    await user.save()
     await pool.save()
 }
