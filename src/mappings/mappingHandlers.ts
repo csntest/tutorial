@@ -91,12 +91,13 @@ export async function handleWithdrawEvent(event: MoonbeamEvent<WithdrawEventArgs
     const address = event.args.user;
     const pid = event.args.pid
     const amount = event.args.amount
+    const participationId = address.concat('-').concat(pid.toString())
 
     let user = await User.get(address);
     user.totalAmount = user.totalAmount - amount.toBigInt();
     await user.save()
 
-    let participation = await Participation.get(address + '-' + pid);
+    let participation = await Participation.get(participationId);
     participation.amount = participation.amount - amount.toBigInt();
     await participation.save();
 
