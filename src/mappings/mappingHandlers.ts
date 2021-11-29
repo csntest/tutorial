@@ -1,5 +1,4 @@
 import {Pool, Participation, User} from "../types";
-// import {Pool} from "../types";
 import {MoonbeamEvent} from '@subql/contract-processors/dist/moonbeam';
 import {BigNumber} from "ethers";
 
@@ -7,9 +6,9 @@ import {BigNumber} from "ethers";
 type DepositEventArgs = [string, BigNumber, BigNumber] & { user: string; amount: BigNumber; pid: BigNumber; };
 type WithdrawEventArgs = [string, BigNumber, BigNumber] & { user: string; amount: BigNumber; pid: BigNumber; };
 
-function createPool(pid: BigNumber, amount: BigNumber): Pool {
+function createPool(pid: BigNumber): Pool {
     let pool = new Pool(pid.toString());
-    pool.totalAmount = amount.toBigInt();
+    pool.totalAmount = BigInt(0);
     pool.totalUsers = BigInt(0);
     pool.averageAmountCommited = BigInt(0);
     pool.maxAmountCommited = BigInt(0);
@@ -18,7 +17,7 @@ function createPool(pid: BigNumber, amount: BigNumber): Pool {
     return pool;
 }
 
-async function createPartitipation(participationId: string, address: string, pid: BigNumber, amount: BigNumber): Promise<void> {
+async function createAndSavePartitipation(participationId: string, address: string, pid: BigNumber, amount: BigNumber): Promise<void> {
     let participation = new Participation(participationId)
     participation.pid = pid.toNumber();
     participation.amount = amount.toBigInt();
@@ -27,19 +26,18 @@ async function createPartitipation(participationId: string, address: string, pid
     return await participation.save();
 }
 
-async function createUser(address: string, amount: BigNumber): Promise<void> {
+async function createAndSaveUser(address: string, amount: BigNumber): Promise<void>  {
     let user = new User(address);
     user.totalAmount = amount.toBigInt();
-
-    return await user.save();
+    return user.save();
 }
 
-function updatePool(pool: Pool, amount: BigNumber): Pool {
+function updateAvMinMaxPool(pool: Pool, amount: BigNumber): Pool {
     pool.averageAmountCommited = pool.totalAmount / pool.totalUsers;
     if (pool.maxAmountCommited < amount.toBigInt()) {
         pool.maxAmountCommited = amount.toBigInt();
     }
-    if (pool.minAmountCommited > amount.toBigInt()) {
+    if (!pool.minAmountCommited || pool.minAmountCommited > amount.toBigInt()) {
         pool.minAmountCommited = amount.toBigInt();
     }
     return pool;
@@ -47,22 +45,21 @@ function updatePool(pool: Pool, amount: BigNumber): Pool {
 
 export async function handleDepositEvent(event: MoonbeamEvent<DepositEventArgs>): Promise<void> {
     const address = event.args.user;
-    const pid = event.args.pid
-    const amount = event.args.amount
-    const participationId = address.concat('-').concat(pid.toString())
+    const pid = event.args.pid;
+    const amount = event.args.amount;
+    const participationId = address.concat('-').concat(pid.toString());
 
     let pool = await Pool.get(pid.toString());
     if (!pool) {
-        pool = createPool(pid, amount);
-    } else {
-        pool.totalAmount = pool.totalAmount + amount.toBigInt();
+        pool = createPool(pid);
     }
+
+    pool.totalAmount = pool.totalAmount + amount.toBigInt();
 
     const user = await User.get(address);
     if (!user) {
-
-        await createUser(address, amount);
-        await createPartitipation(participationId, address, pid, amount);
+        await createAndSaveUser(address, amount);
+        await createAndSavePartitipation(participationId, address, pid, amount);
         pool.totalUsers = pool.totalUsers + BigInt(1);
 
     } else {
@@ -72,32 +69,33 @@ export async function handleDepositEvent(event: MoonbeamEvent<DepositEventArgs>)
 
         const participation = await Participation.get(participationId);
         if (!participation) {
-            await createPartitipation(participationId, address, pid, amount);
+            await createAndSavePartitipation(participationId, address, pid, amount);
+            pool.totalUsers = pool.totalUsers + BigInt(1);
+        } else if (!participation.amount) {
+            pool.totalUsers = pool.totalUsers + BigInt(1);
+            participation.amount = participation.amount + amount.toBigInt();
+            await participation.save();
         } else {
             participation.amount = participation.amount + amount.toBigInt();
             await participation.save();
         }
-
     }
 
-
-    pool.totalAmount = pool.totalAmount + amount.toBigInt();
-    pool = updatePool(pool, amount);
+    pool = updateAvMinMaxPool(pool, amount);
 
     await pool.save();
 }
 
 export async function handleWithdrawEvent(event: MoonbeamEvent<WithdrawEventArgs>): Promise<void> {
     const address = event.args.user;
-    const pid = event.args.pid
-    const amount = event.args.amount
-    const participationId = address.concat('-').concat(pid.toString())
+    const pid = event.args.pid;
+    const amount = event.args.amount;
 
     let user = await User.get(address);
     user.totalAmount = user.totalAmount - amount.toBigInt();
-    await user.save()
+    await user.save();
 
-    let participation = await Participation.get(participationId);
+    let participation = await Participation.get(address + '-' + pid);
     participation.amount = participation.amount - amount.toBigInt();
     await participation.save();
 
@@ -106,6 +104,6 @@ export async function handleWithdrawEvent(event: MoonbeamEvent<WithdrawEventArgs
     if (!participation.amount) {
         pool.totalUsers = pool.totalUsers - BigInt(1);
     }
-    pool = updatePool(pool, amount);
-    await pool.save()
+    pool = updateAvMinMaxPool(pool, amount);
+    await pool.save();
 }

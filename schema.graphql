@@ -17,6 +17,5 @@ type Participation @entity {
 type User @entity {
   id: ID! # User's address
   totalAmount: BigInt!
-  vaultsAmount: BigInt!
   participations: [Participation!]! @derivedFrom(field: "user")
 }
